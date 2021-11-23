@@ -1,20 +1,22 @@
-let g:bestcommend#height = 5
-let g:bestcommend#width = 20
+let g:bestcommand#max_height = 5
+let g:bestcommand#max_width = 30
 
 let s:messages = []
-let g:bestcommend#rules = [
+let g:bestcommand#messages = []
+let g:bestcommand#rules = [
 \       's:rule_no_l',
 \       's:rule_no_h',
 \       's:rule_no_arrow',
+\       's:rule_prefer_A',
+\       's:rule_prefer_C_w',
 \]
 
-func! bestcommend#start() abort
-    augroup bestcommend
+func! bestcommand#start() abort
+    augroup bestcommand
         au!
         au User KeyPress call s:handle_keypress()
     augroup END
 
-    call s:create_popup()
 endfunc
 
 func! s:create_popup() abort
@@ -22,21 +24,22 @@ func! s:create_popup() abort
             call popup_close(s:popup)
     endif
 
+    if len(s:messages) == 0
+        return
+    endif
+
     let s:popup = popup_create(s:messages, {
-    \   'line': winheight(0) - g:bestcommend#height,
-    \   'col': winwidth(0) - g:bestcommend#width,
-    \   'minwidth': g:bestcommend#width,
-    \   'minheight': g:bestcommend#height,
+    \   'line': 'cursor+1',
+    \   'col': winwidth(0) - g:bestcommand#max_width,
+    \   'maxheight': g:bestcommand#max_height,
+    \   'maxwidth': g:bestcommand#max_width,
     \   'padding': [0, 1, 0, 1],
     \})
 endfunc
 
 func! s:handle_keypress() abort
-    if len(g:keypress#history) <= 2
-        return
-    endif
-
-    for rule in g:bestcommend#rules
+    let s:messages = []
+    for rule in g:bestcommand#rules
         call function(rule)()
     endfor
 
@@ -45,19 +48,38 @@ endfunc
 
 
 func! s:rule_no_l() abort
-    if g:keypress#history[-2] ==# 'l' && g:keypress#history[-1] ==# 'l'
-        let s:messages = [] + s:messages
-        call bestcommend#add_message('ll => f{char}')
+    if mode() != "n"
+        return
+    endif
+
+    if len(g:keypress#history) < 3
+        return
+    endif
+
+    if g:keypress#history[-3:] ==# ['l', 'l', 'l']
+        call bestcommand#add_message('lの代わりにf{char}を使えます')
     endif
 endfunc
 
 func! s:rule_no_h() abort
-    if g:keypress#history[-2] ==# 'h' && g:keypress#history[-1] ==# 'h'
-        call bestcommend#add_message('hh => F{char}')
+    if mode() != "n"
+        return
+    endif
+
+    if len(g:keypress#history) < 3
+        return
+    endif
+
+    if g:keypress#history[-3:] ==# ['h', 'h', 'h']
+        call bestcommand#add_message('hの代わりにF{char}を使えます')
     endif
 endfunc
 
 func! s:rule_no_arrow() abort
+    if mode() != "n"
+        return
+    endif
+
     let keymap = {
     \   "\<Up>": 'k',
     \   "\<Right>": 'h',
@@ -71,13 +93,50 @@ func! s:rule_no_arrow() abort
     \   "\<Left>": '←',
     \}
     for k in keys(keymap)
-        if g:keypress#history[-2] ==# k && g:keypress#history[-1] ==# k
-            call bestcommend#add_message(symbols[k].' => '.keymap[k])
+        if keypress#current() ==# k
+            call bestcommand#add_message('矢印の代わりに`'.keymap[k].'`を使えます')
         endif
     endfor
 endfunc
 
-func! bestcommend#add_message(msg) abort
+func! bestcommand#add_message(msg) abort
     let n = len(s:messages) + 1
-    let s:messages = [n.'. '.a:msg] + s:messages
+    let g:bestcommand#messages = [n.'. '.a:msg] + g:bestcommand#messages
+    let s:messages = [a:msg] + s:messages
+endfunc
+
+func! s:rule_prefer_A() abort
+    if mode() != "n"
+        return
+    endif
+
+    if len(g:keypress#history) < 2
+        return
+    endif
+
+    if keypress#current() !=# 'a'
+        return
+    endif
+
+    if g:keypress#history[-2] !=# 'e' && g:keypress#history[-2] !=# 'l'
+        return
+    endif
+
+    if col(".") ==# col("$") - 1
+        call bestcommand#add_message('行末Insertに`A`を使えます')
+    endif
+endfunc
+
+func! s:rule_prefer_C_w() abort
+    if mode() != "i"
+        return
+    endif
+
+    if len(g:keypress#history) < 3
+        return
+    endif
+
+    if g:keypress#history[-3:] ==# ["\<BS>", "\<BS>", "\<BS>"]
+        call bestcommand#add_message('単語削除に`<C-w>`を使えます')
+    endif
 endfunc
